@@ -1,0 +1,80 @@
+# Required libraries:
+# boto3 (AWS SDK for Python), kafka-python, pyspark
+
+import boto3
+from kafka import KafkaProducer
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, sum as spark_sum, lit
+from pyspark.sql.types import StructType, StructField, StringType, FloatType, IntegerType
+
+# 1. Connect to AWS and get EzyShop data
+aws_access_key = "<your-aws-access-key>"
+aws_secret_key = "<your-aws-secret-key>"
+region = "<your-aws-region>"
+s3_bucket = "<your-ezyshop-bucket>"
+
+s3_client = boto3.client('s3', aws_access_key_id=aws_access_key,
+                        aws_secret_access_key=aws_secret_key, region_name=region)
+# Example: Download data file from s3 (you may also query from AWS RDS or DynamoDB)
+s3_client.download_file(s3_bucket, 'source_data.csv', '/tmp/source_data.csv')
+
+# 2. Ingest Data with Apache Kafka Producer
+producer = KafkaProducer(bootstrap_servers='localhost:9092')
+with open('/tmp/source_data.csv', 'r') as f:
+    for line in f:
+        producer.send('ezyshop-stream', value=line.encode('utf-8'))
+producer.flush()
+
+# 3. Set up Spark Streaming to process Kafka data
+spark = SparkSession.builder \
+    .appName("EzyShopRealtimeAnalytics") \
+    .getOrCreate()
+
+# Define structure of incoming data
+schema = StructType([
+    StructField("customer_id", StringType()),
+    StructField("product_id", StringType()),
+    StructField("category", StringType()),
+    StructField("quantity", IntegerType()),
+    StructField("price", FloatType()),
+    StructField("inventory_level", IntegerType())
+])
+
+# Read from Kafka topic
+df = spark.readStream \
+    .format("kafka") \
+    .option("kafka.bootstrap.servers", "localhost:9092") \
+    .option("subscribe", "ezyshop-stream") \
+    .load()
+
+# Decode and split Kafka message value
+raw_df = df.selectExpr("CAST(value AS STRING)")
+data_df = raw_df.selectExpr(
+    "split(value, ',')[0] as customer_id",
+    "split(value, ',')[1] as product_id",
+    "split(value, ',')[2] as category",
+    "CAST(split(value, ',')[3] AS INT) as quantity",
+    "CAST(split(value, ',')[4] AS FLOAT) as price",
+    "CAST(split(value, ',')[5] AS INT) as inventory_level"
+)
+
+# 4. Calculate KPI: Total Sales, Sales Prediction, Inventory Alerts
+# Basic KPI
+sales_df = data_df.withColumn("sales_amount", col("quantity") * col("price"))
+
+total_sales_df = sales_df.groupBy().agg(spark_sum("sales_amount").alias("total_sales"))
+
+# Prediction: Simple moving average as placeholder (for MLlib model, train on historic batches)
+sales_prediction_df = total_sales_df.withColumn("predicted_sales", col("total_sales") * lit(1.05)) # Est. 5% growth
+
+# Inventory alert for low stock
+low_inventory_df = data_df.filter(col("inventory_level") < 10)
+
+# Output streaming results (to console; in production, output to dashboard, alert system, or sink)
+query_sales = total_sales_df.writeStream.outputMode("complete").format("console").start()
+query_prediction = sales_prediction_df.writeStream.outputMode("complete").format("console").start()
+query_inventory = low_inventory_df.writeStream.outputMode("append").format("console").start()
+
+query_sales.awaitTermination()
+query_prediction.awaitTermination()
+query_inventory.awaitTermination()
