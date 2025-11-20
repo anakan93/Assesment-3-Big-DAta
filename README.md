@@ -1,4 +1,4 @@
-# Assesment-3-Big-DAta
+# Assesment-3-Big-Data
 Ezyshop big data architecture 
 Real-time analytics plays a critical role in enabling EzyShop to remain competitive and responsive in the rapidly evolving e-commerce landscape. By capturing and analyzing data as it is generated—such as customer clicks, searches, and purchase transactions—EzyShop can deliver highly personalized experiences, which have been shown to significantly increase customer engagement and loyalty (Chen, Chiang, & Storey, 2012). This real-time insight facilitates dynamic pricing strategies, tailored marketing campaigns, and instant product recommendations that meet individual customer preferences. Moreover, the ability to process data instantly allows EzyShop to react to emerging trends and behavioral patterns promptly, which is essential in a market where customer preferences and competitive conditions can shift rapidly (LaValle et al., 2011).
 
